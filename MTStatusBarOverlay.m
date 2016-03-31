@@ -189,6 +189,9 @@ kDetailViewWidth, kHistoryTableRowHeight*kMaxHistoryTableRowCount + kStatusBarHe
 @property (nonatomic, strong) UITableView *historyTableView;
 @property (nonatomic, assign) BOOL forcedToHide;
 
+@property (nonatomic, assign) UIInterfaceOrientation fromOrientation;
+@property (nonatomic, assign) CGSize fromSize;
+
 // intern method that posts a new entry to the message-queue
 - (void)postMessage:(NSString *)message type:(MTMessageType)messageType duration:(NSTimeInterval)duration animated:(BOOL)animated immediate:(BOOL)immediate;
 // intern method that clears the messageQueue and then posts a new entry to it
@@ -279,8 +282,8 @@ kDetailViewWidth, kHistoryTableRowHeight*kMaxHistoryTableRowCount + kStatusBarHe
 #pragma mark Lifecycle
 ////////////////////////////////////////////////////////////////////////
 
-- (id)initWithFrame:(CGRect)frame {
-    if ((self = [super initWithFrame:frame])) {
+- (id)init {
+    if ((self = [super init])) {
         CGRect statusBarFrame = [UIApplication sharedApplication].statusBarFrame;
         
 		// only use height of 20px even is status bar is doubled
@@ -462,7 +465,8 @@ kDetailViewWidth, kHistoryTableRowHeight*kMaxHistoryTableRowCount + kStatusBarHe
         [[NSNotificationCenter defaultCenter] addObserver:self 
                                                  selector:@selector(applicationWillResignActive:)
                                                      name:UIApplicationWillResignActiveNotification object:nil];
-        
+        self.fromOrientation = [UIApplication sharedApplication].statusBarOrientation;
+        self.fromSize = CGSizeMake(UIInterfaceOrientationIsPortrait(self.fromOrientation) ? kScreenWidth : kScreenHeight, UIInterfaceOrientationIsPortrait(self.fromOrientation) ? kScreenHeight : kScreenWidth);
         // initial rotation, fixes the issue with a wrong bar appearance in landscape only mode
         [self rotateToStatusBarFrame:nil];
     }
@@ -859,6 +863,40 @@ kDetailViewWidth, kHistoryTableRowHeight*kMaxHistoryTableRowCount + kStatusBarHe
 	[self performSelector:@selector(rotateToStatusBarFrame:) withObject:statusBarFrameValue afterDelay:0];
 }
 
+- (NSInteger)coordinateForOrientation:(UIInterfaceOrientation )orientation
+{
+    NSInteger value = 1;
+    switch (orientation) {
+        case UIInterfaceOrientationPortrait:
+            value = 1;
+            break;
+        case UIInterfaceOrientationLandscapeRight:
+            value = 2;
+            break;
+        case UIInterfaceOrientationPortraitUpsideDown:
+            value = 3;
+            break;
+        case UIInterfaceOrientationLandscapeLeft:
+            value = 4;
+            break;
+            
+        default:
+            break;
+    }
+    return value;
+}
+
+- (NSInteger)finalRotationFrom:(UIInterfaceOrientation )from to:(UIInterfaceOrientation )to
+{
+    NSInteger fromTag = [self coordinateForOrientation:from];
+    NSInteger toTag = [self coordinateForOrientation:to];
+    NSInteger sub = toTag - fromTag;
+    if (sub < 0) {
+        sub += 4;
+    }
+    return sub;
+}
+
 - (void)rotateToStatusBarFrame:(NSValue *)statusBarFrameValue {
 	// current interface orientation
     UIInterfaceOrientation orientation = [UIApplication sharedApplication].statusBarOrientation;
@@ -874,25 +912,34 @@ kDetailViewWidth, kHistoryTableRowHeight*kMaxHistoryTableRowCount + kStatusBarHe
 		[self setDetailViewHidden:YES animated:NO];
 	}
     
+	NSInteger sub = [self finalRotationFrom:self.fromOrientation to:orientation];
 	CGFloat pi = (CGFloat)M_PI;
-	if (orientation == UIDeviceOrientationPortrait) {
-		self.transform = CGAffineTransformIdentity;
-		self.frame = CGRectMake(0.f,0.f,kScreenWidth,kStatusBarHeight);
-		self.smallFrame = CGRectMake(self.frame.size.width - kWidthSmall, 0.0f, kWidthSmall, self.frame.size.height);
-	}else if (orientation == UIDeviceOrientationLandscapeLeft) {
-		self.transform = CGAffineTransformMakeRotation(pi * (90.f) / 180.0f);
-		self.frame = CGRectMake(kScreenWidth - kStatusBarHeight,0, kStatusBarHeight, kScreenHeight);
-		self.smallFrame = CGRectMake(kScreenHeight-kWidthSmall,0,kWidthSmall,kStatusBarHeight);
-	} else if (orientation == UIDeviceOrientationLandscapeRight) {
-		self.transform = CGAffineTransformMakeRotation(pi * (-90.f) / 180.0f);
-		self.frame = CGRectMake(0.f,0.f, kStatusBarHeight, kScreenHeight);
-		self.smallFrame = CGRectMake(kScreenHeight-kWidthSmall,0.f, kWidthSmall, kStatusBarHeight);
-	} else if (orientation == UIDeviceOrientationPortraitUpsideDown) {
-		self.transform = CGAffineTransformMakeRotation(pi);
-		self.frame = CGRectMake(0.f,kScreenHeight - kStatusBarHeight,kScreenWidth,kStatusBarHeight);
-		self.smallFrame = CGRectMake(self.frame.size.width - kWidthSmall, 0.f, kWidthSmall, self.frame.size.height);
-	}
-    
+	switch (sub)
+	{
+        case 0:
+            self.transform = CGAffineTransformIdentity;
+            self.frame = CGRectMake(0.f, 0.f, self.fromSize.width, kStatusBarHeight);
+            self.smallFrame = CGRectMake(self.frame.size.width - kWidthSmall, 0.0f, kWidthSmall, kStatusBarHeight);
+            break;
+        case 1:
+            self.transform = CGAffineTransformMakeRotation(pi * (90.f) / 180.0f);
+            self.frame = CGRectMake(self.fromSize.width - kStatusBarHeight, 0 , kStatusBarHeight, self.fromSize.height);
+            self.smallFrame = CGRectMake(self.fromSize.height-kWidthSmall, 0, kWidthSmall, kStatusBarHeight);
+            break;
+        case 2:
+            self.transform = CGAffineTransformMakeRotation(pi);
+            self.frame = CGRectMake(0.f, self.fromSize.height - kStatusBarHeight, self.fromSize.width, kStatusBarHeight);
+            self.smallFrame = CGRectMake(self.fromSize.width - kWidthSmall, 0.f, kWidthSmall, kStatusBarHeight);
+            break;
+        case 3:
+            self.transform = CGAffineTransformMakeRotation(pi * (-90.f) / 180.0f);
+            self.frame = CGRectMake(0.f, 0.f, kStatusBarHeight, self.fromSize.height);
+            self.smallFrame = CGRectMake(self.fromSize.height-kWidthSmall, 0.f, kWidthSmall, kStatusBarHeight);
+            break;
+            
+        default:
+            break;
+    }
     self.backgroundView.frame = [self backgroundViewFrameForStatusBarInterfaceOrientation];
     
 	// if the statusBar is currently shrinked, update the frames for the new rotation state
