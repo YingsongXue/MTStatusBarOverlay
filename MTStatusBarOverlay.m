@@ -863,38 +863,92 @@ kDetailViewWidth, kHistoryTableRowHeight*kMaxHistoryTableRowCount + kStatusBarHe
 	[self performSelector:@selector(rotateToStatusBarFrame:) withObject:statusBarFrameValue afterDelay:0];
 }
 
-- (NSInteger)coordinateForOrientation:(UIInterfaceOrientation )orientation
+/*
+ Coordinate origin
+ We will start from TopLeft as the a example picture.
+ 1. assume it's start at Portrait position, which coordinate is top left as the (0, 0)
+ 2. Start X, Y: keep the coordinate unchange, but rotate your eye,
+        Overlay top means device still Portrait, {(0, 0), (OrinalWidth, 20)}
+        Overlay Right means that device is rotate to LandscapeRight {(OrinalWidth-20, 0), (20, OrinalHeight)}
+        Overlay Bottom means that device is rotate to UpsideDown {(0, OrinalHeight-20), (OrinalWidth, 20)}
+        Overlay Left means that device is rotate to LandscapeLeft {(0, 0), (20, OrinalHeight)}
+ 3. Transform: now adding transform to self, which will only rotate angles.
+ 4. Width & Height: fromSize means the Width & Height the first time enter the apps with the Size.
+ 
+ 5. Go on to other coordinate, you will see all relative is not changed.
+ 
+ TopLeft                  TopRight
+ ---------------------------
+ |========Overlay Top======|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |]Overlay         Overlay[|
+ |]Left              Right[|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |]                       [|
+ |======Overlay Bottom=====|
+ |         (Home)          |
+ ---------------------------
+ BottomLeft              BottomRight
+ */
+typedef NS_ENUM(NSInteger, MTCoordinatePosition)
 {
-    NSInteger value = 1;
+    MTCoordinatePositionTopLeft = 1,
+    MTCoordinatePositionTopRight = 2,
+    MTCoordinatePositionBottomRight = 3,
+    MTCoordinatePositionBottomLeft = 4,
+};
+- (MTCoordinatePosition)coordinateForOrientation:(UIInterfaceOrientation )orientation
+{
+    NSInteger value = MTCoordinatePositionTopLeft;
     switch (orientation) {
         case UIInterfaceOrientationPortrait:
-            value = 1;
+            value = MTCoordinatePositionTopLeft;
             break;
         case UIInterfaceOrientationLandscapeRight:
-            value = 2;
+            value = MTCoordinatePositionTopRight;
             break;
         case UIInterfaceOrientationPortraitUpsideDown:
-            value = 3;
+            value = MTCoordinatePositionBottomRight;
             break;
         case UIInterfaceOrientationLandscapeLeft:
-            value = 4;
+            value = MTCoordinatePositionBottomLeft;
             break;
-            
         default:
             break;
     }
     return value;
 }
 
-- (NSInteger)finalRotationFrom:(UIInterfaceOrientation )from to:(UIInterfaceOrientation )to
+typedef NS_ENUM(NSInteger, MTCoordinatePositionRelative)
 {
-    NSInteger fromTag = [self coordinateForOrientation:from];
-    NSInteger toTag = [self coordinateForOrientation:to];
-    NSInteger sub = toTag - fromTag;
-    if (sub < 0) {
-        sub += 4;
+    MTCoordinatePositionRelativeTop = 0,
+    MTCoordinatePositionRelativeRight = 1,
+    MTCoordinatePositionRelativeBottom = 2,
+    MTCoordinatePositionRelativeLeft = 3,
+};
+
+- (MTCoordinatePositionRelative)finalRotationFrom:(UIInterfaceOrientation )from to:(UIInterfaceOrientation )to
+{
+    MTCoordinatePosition fromPosition = [self coordinateForOrientation:from];
+    MTCoordinatePosition toPosition = [self coordinateForOrientation:to];
+    MTCoordinatePositionRelative relativePosition = toPosition - fromPosition;
+    if (relativePosition < 0)
+    {
+        //avoid when relative position is negtive number.
+        relativePosition += 4;
     }
-    return sub;
+    return relativePosition;
 }
 
 - (void)rotateToStatusBarFrame:(NSValue *)statusBarFrameValue {
@@ -912,26 +966,26 @@ kDetailViewWidth, kHistoryTableRowHeight*kMaxHistoryTableRowCount + kStatusBarHe
 		[self setDetailViewHidden:YES animated:NO];
 	}
     
-	NSInteger sub = [self finalRotationFrom:self.fromOrientation to:orientation];
+	MTCoordinatePositionRelative relativePosition = [self finalRotationFrom:self.fromOrientation to:orientation];
 	CGFloat pi = (CGFloat)M_PI;
-	switch (sub)
+	switch (relativePosition)
 	{
-        case 0:
+        case MTCoordinatePositionRelativeTop:
             self.transform = CGAffineTransformIdentity;
             self.frame = CGRectMake(0.f, 0.f, self.fromSize.width, kStatusBarHeight);
             self.smallFrame = CGRectMake(self.frame.size.width - kWidthSmall, 0.0f, kWidthSmall, kStatusBarHeight);
             break;
-        case 1:
+        case MTCoordinatePositionRelativeRight:
             self.transform = CGAffineTransformMakeRotation(pi * (90.f) / 180.0f);
             self.frame = CGRectMake(self.fromSize.width - kStatusBarHeight, 0 , kStatusBarHeight, self.fromSize.height);
             self.smallFrame = CGRectMake(self.fromSize.height-kWidthSmall, 0, kWidthSmall, kStatusBarHeight);
             break;
-        case 2:
+        case MTCoordinatePositionRelativeBottom:
             self.transform = CGAffineTransformMakeRotation(pi);
             self.frame = CGRectMake(0.f, self.fromSize.height - kStatusBarHeight, self.fromSize.width, kStatusBarHeight);
             self.smallFrame = CGRectMake(self.fromSize.width - kWidthSmall, 0.f, kWidthSmall, kStatusBarHeight);
             break;
-        case 3:
+        case MTCoordinatePositionRelativeLeft:
             self.transform = CGAffineTransformMakeRotation(pi * (-90.f) / 180.0f);
             self.frame = CGRectMake(0.f, 0.f, kStatusBarHeight, self.fromSize.height);
             self.smallFrame = CGRectMake(self.fromSize.height-kWidthSmall, 0.f, kWidthSmall, kStatusBarHeight);
